@@ -109,9 +109,8 @@ def main():
         else:
             print(f"Unexpected response format for paper {paper_id}")
         time.sleep(2)  # 避免请求过于频繁
-        break
         
-    # content.save_to_md()
+    content.save_to_md()
 
 if __name__ == "__main__":
     main()
