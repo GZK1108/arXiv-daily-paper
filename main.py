@@ -87,28 +87,31 @@ def main():
     ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
-    for paper in papers:
-        paper_id = paper.id.split('/')[-1]
-        title = paper.title
-        summary = paper.summary
-        url = paper.link
-        print(f"Processing paper: {paper_id}")
-        if content.item_exists(title):
-            print(f"Paper {paper_id} already processed, skipping.")
-            continue
-        translated_content = translate_and_summarize(title, summary)
-        # 假设返回内容格式为：翻译后的标题\n\n翻译后的摘要\n\n中文摘要
-        parts = translated_content.split('\n\n')
-        if len(parts) >= 2:
-            try:
-                translated_title = parts[0].split('\n')[1].strip()
-            except:
-                translated_title = parts[0].strip()
-            translated_summary = parts[1].strip()
-            content.add_content(title, translated_title, translated_summary, url)
-        else:
-            print(f"Unexpected response format for paper {paper_id}")
-        time.sleep(2)  # 避免请求过于频繁
+    try:
+        for paper in papers:
+            paper_id = paper.id.split('/')[-1]
+            title = paper.title
+            summary = paper.summary
+            url = paper.link
+            print(f"Processing paper: {paper_id}")
+            if content.item_exists(title):
+                print(f"Paper {paper_id} already processed, skipping.")
+                continue
+            translated_content = translate_and_summarize(title, summary)
+            # 假设返回内容格式为：翻译后的标题\n\n翻译后的摘要\n\n中文摘要
+            parts = translated_content.split('\n\n')
+            if len(parts) >= 2:
+                try:
+                    translated_title = parts[0].split('\n')[1].strip()
+                except:
+                    translated_title = parts[0].strip()
+                translated_summary = parts[1].strip()
+                content.add_content(title, translated_title, translated_summary, url)
+            else:
+                print(f"Unexpected response format for paper {paper_id}")
+            time.sleep(2)  # 避免请求过于频繁
+    except Exception as e:
+        print(f"An error occurred: {e}")
         
     content.save_to_md()
 
