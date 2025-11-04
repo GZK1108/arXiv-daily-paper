@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
+from webdav3.client import Client
+
 
 load_dotenv("api_key.env")  # 指定加载 api_key.env 文件
 client = OpenAI(
@@ -40,6 +42,28 @@ def translate_and_summarize(title, summary):
         content = response.choices[0].message.content.strip()
         return content
     return "原始标题\n" + title + "\n\n" + "原始摘要\n" + summary  # 返回原始内容
+
+# 新增webdav连接，保存到远程服务器
+class WebDAVClient:
+    def __init__(self):
+        self._connect()
+        
+    def upload_file(self, local_path, remote_path):
+        self.client.upload_sync(remote_path=remote_path, local_path=local_path)
+    
+    def _connect(self):
+        options = {
+            'webdav_hostname': os.getenv("WEBDAV_HOSTNAME"),
+            'webdav_login':    os.getenv("WEBDAV_LOGIN"),
+            'webdav_password': os.getenv("WEBDAV_PASSWORD")
+        }
+        self.client = Client(options)
+        # 测试连接
+        try:
+            self.client.list('./')
+            print("Connected to WebDAV server successfully.")
+        except Exception as e:
+            print("Failed to connect to WebDAV server:", e)
 
 
 class PaperContent:
@@ -79,11 +103,13 @@ class PaperContent:
                 f.write(f"**摘要:**\n\n{paper['translated_summary']}\n\n")
                 f.write(f"**链接:** {paper['url']}\n\n")
                 f.write("---\n\n")
+        return filename
     
     def item_exists(self, title):
         return title in self.title_set
 
 def main():
+    is_remote_save = True  # 是否保存到远程WebDAV服务器
     ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
@@ -110,10 +136,17 @@ def main():
             else:
                 print(f"Unexpected response format for paper {paper_id}")
             time.sleep(2)  # 避免请求过于频繁
+
     except Exception as e:
         print(f"An error occurred: {e}")
         
-    content.save_to_md()
+    file_path = content.save_to_md()
+    if is_remote_save:
+        webdav_client = WebDAVClient()
+        local_md_path = file_path
+        remote_md_path = f"/论文总结/{file_path.split('/')[-1]}"
+        webdav_client.upload_file(local_md_path, remote_md_path)
+        print(f"Uploaded {local_md_path} to WebDAV server at {remote_md_path}")
 
 if __name__ == "__main__":
     main()

@@ -25,7 +25,7 @@ arXiv-daily-paper/
 ## 安装依赖
 
 ```bash
-pip install feedparser python-dotenv openai
+pip install feedparser python-dotenv openai webdavclient3
 ```
 
 或使用 requirements.txt（推荐）：
@@ -43,9 +43,12 @@ pip install -r requirements.txt
 ```env
 OPENAI_API_KEY=你的OpenAI密钥
 OPENAI_BASE_URL=https://api.openai.com/v1
+WEBDAV_HOSTNAME=https://example/webdav
+WEBDAV_LOGIN=your_name
+WEBDAV_PASSWORD=your_password
 ```
 
-> **注意**: 如果使用第三方 API 代理（如 ChatAnywhere），请修改 `OPENAI_BASE_URL` 为对应的地址。
+> **注意**: 如果使用第三方 API 代理（如 ChatAnywhere），请修改 `OPENAI_BASE_URL` 为对应的地址。Webdav具体配置请参考你的Webdav提供方教程
 
 ### 2. 修改订阅类别（可选）
 
@@ -79,6 +82,7 @@ python main.py
 2. 逐篇翻译论文标题和摘要
 3. 实时保存到 JSON 文件（防止中断丢失数据）
 4. 最后生成完整的 Markdown 报告
+5. 如果main()中`is_remote_save=True`, 程序会连接到Webdav服务器，并将第4步中生成的md文件保存到远程服务器`/论文总结`目录下（可自行修改目录）
 
 ## 输出格式
 
@@ -116,6 +120,7 @@ python main.py
 3. **数据持久化**: 每处理一篇论文都会立即保存到 JSON 文件，避免中断导致数据丢失
 4. **成本控制**: 翻译会消耗 API 调用额度，请注意控制使用频率
 5. **环境变量**: 确保 `api_key.env` 文件不要提交到版本控制系统
+6. **Webdav**: 如果启用，请确保连接正确
 
 
 ## 定时任务（可选）
