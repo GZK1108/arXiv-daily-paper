@@ -26,17 +26,38 @@ def fetch_arxiv_papers(rss_url):
     return feed.entries
 
 def translate_and_summarize(title, summary):
-    prompt = f"请将以下论文标题和摘要翻译成中文。\n\n标题: {title}\n摘要: {summary}\n\n请提供翻译后的标题、翻译后的摘要。返回格式为：\n翻译后的标题\n<翻译后的标题>\n\n翻译后的摘要\n<翻译后的摘要>。"
+    prompt = f"""
+    将以下论文标题和摘要译为中文，仅输出译文，按下列格式：
+
+    翻译后的标题
+    <译文标题>
+
+    翻译后的摘要
+    <译文摘要>
+
+    禁止输出原文、说明或空结果。
+
+    标题: {title}
+    摘要: {summary}
+    """
     response = client.chat.completions.create(
         model="gpt-5-nano",
         messages=[
-            {"role": "system", "content": "你是一个专业的学术论文翻译和摘要助手。严格遵守用户的要求，提供准确且流畅的中文翻译,内容精炼简洁，返回正确的格式。"},
+            {
+                "role": "system",
+                "content": (
+                    "你是一个专业的学术论文翻译助手。"
+                    "你的回答必须准确、格式化、且符合科研论文中文写作规范。"
+                    "任何时候都不得返回英文原文、解释、或无内容输出。"
+                )
+            },
             {"role": "user", "content": prompt}
         ],
-        # temperature=0.3,
+        # temperature=0.2,
         # max_tokens=1000,
-        # top_p=1,
+        # top_p=0.9,
     )
+
     # 检查响应内容
     if response.choices and response.choices[0].message:
         content = response.choices[0].message.content.strip()
