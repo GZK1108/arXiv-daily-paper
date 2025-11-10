@@ -27,18 +27,35 @@ def fetch_arxiv_papers(rss_url):
 
 def translate_and_summarize(title, summary):
     prompt = f"""
-    将以下论文标题和摘要译为中文，仅输出译文，按下列格式：
+    你是一名专业的学术论文翻译助手，具备精确的中英学术语言转换能力。
+    你的任务是 **仅将下方的论文标题与摘要翻译成中文**，不得返回任何原文或额外解释。
 
-    翻译后的标题
-    <译文标题>
-
-    翻译后的摘要
-    <译文摘要>
-
-    禁止输出原文、说明或空结果。
-
+    ---
+    【输入内容】
     标题: {title}
     摘要: {summary}
+    ---
+
+    【翻译要求】
+    1. 严格逐句忠实翻译，保持学术语气与逻辑一致。
+    2. 不得添加、改写或总结原文内容。
+    3. 不得输出任何原文、说明文字或空结果。
+    4. 保证中文语法通顺、专业术语使用准确。
+
+    【输出格式】
+    请严格按照以下格式输出（不得省略任何标识符）：
+
+    翻译后的标题
+    <翻译后的标题>
+
+    翻译后的摘要
+    <翻译后的摘要>
+
+    ---
+    注意：
+    - 仅输出上方指定格式的内容，不要输出英文原文。
+    - 不要添加多余的空行、符号或说明性文字。
+    - 若输入为空，也需返回空标签。
     """
     response = client.chat.completions.create(
         model="gpt-5-nano",
@@ -57,6 +74,7 @@ def translate_and_summarize(title, summary):
         # max_tokens=1000,
         # top_p=0.9,
     )
+
 
     # 检查响应内容
     if response.choices and response.choices[0].message:
@@ -134,6 +152,7 @@ def main():
     ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
+    count = 0
     try:
         for paper in papers:
             paper_id = paper.id.split('/')[-1]
@@ -157,6 +176,9 @@ def main():
             else:
                 print(f"Unexpected response format for paper {paper_id}")
             time.sleep(2)  # 避免请求过于频繁
+            count += 1
+            if count >= 3:  # 限制每次处理的论文数量，
+                break
 
     except Exception as e:
         print(f"An error occurred: {e}")
