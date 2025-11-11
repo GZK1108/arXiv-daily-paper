@@ -152,7 +152,6 @@ def main():
     ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
-    count = 0
     try:
         for paper in papers:
             paper_id = paper.id.split('/')[-1]
@@ -176,9 +175,7 @@ def main():
             else:
                 print(f"Unexpected response format for paper {paper_id}")
             time.sleep(2)  # 避免请求过于频繁
-            count += 1
-            if count >= 3:  # 限制每次处理的论文数量，
-                break
+
 
     except Exception as e:
         print(f"An error occurred: {e}")
