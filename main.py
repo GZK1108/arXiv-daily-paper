@@ -26,55 +26,53 @@ def fetch_arxiv_papers(rss_url):
     return feed.entries
 
 def translate_and_summarize(title, summary):
-    prompt = f"""
-    你是一名专业的学术论文翻译助手，具备精确的中英学术语言转换能力。
-    你的任务是 **仅将下方的论文标题与摘要翻译成中文**，不得返回任何原文或额外解释。
+    prompt_user = f"""
+    You are a professional academic translator. 
+    Translate the following paper title and abstract **into Chinese**.
 
     ---
-    【输入内容】
-    标题: {title}
-    摘要: {summary}
+    INPUT
+    Title: {title}
+    Abstract: {summary}
     ---
 
-    【翻译要求】
-    1. 严格逐句忠实翻译，保持学术语气与逻辑一致。
-    2. 不得添加、改写或总结原文内容。
-    3. 不得输出任何原文、说明文字或空结果。
-    4. 保证中文语法通顺、专业术语使用准确。
+    REQUIREMENTS
+    1. Translate faithfully into fluent, academic Chinese.
+    2. You may keep proper nouns, formulas, or short English terms if they have no clear Chinese equivalent, but **never return the full title or abstract entirely in English**.
+    3. Do not explain, comment, or add any text beyond the translation itself.
+    4. Do not summarize or rewrite.
+    5. The output **must strictly follow** the format below — no extra text, lines, or symbols.
 
-    【输出格式】
-    请严格按照以下格式输出（不得省略任何标识符）：
-
-    翻译后的标题
+    ---
     <翻译后的标题>
 
-    翻译后的摘要
     <翻译后的摘要>
-
     ---
-    注意：
-    - 仅输出上方指定格式的内容，不要输出英文原文。
-    - 不要添加多余的空行、符号或说明性文字。
-    - 若输入为空，也需返回空标签。
+
+    SELF-CHECK (must be performed before final output)
+    - If the translated title or abstract remains mostly English (more than half of the text is English), redo the translation into Chinese.
+    - Ensure both fields are non-empty and use natural Chinese sentence structure.
+
+    Return only the formatted translation block above.
     """
+
     response = client.chat.completions.create(
         model="gpt-5-nano",
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "你是一个专业的学术论文翻译助手。"
-                    "你的回答必须准确、格式化、且符合科研论文中文写作规范。"
-                    "任何时候都不得返回英文原文、解释、或无内容输出。"
+                    "You are a strict academic translation assistant. "
+                    "Your only job is to translate English academic texts into Chinese accurately and output in the exact user-specified format. "
+                    "Never return any explanation, English paragraphs, or missing sections."
                 )
             },
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt_user}
         ],
-        # temperature=0.2,
-        # max_tokens=1000,
-        # top_p=0.9,
+        # temperature=0.0,
+        # top_p=1.0,
+        # max_tokens=1200,
     )
-
 
     # 检查响应内容
     if response.choices and response.choices[0].message:
@@ -148,7 +146,7 @@ class PaperContent:
         return title in self.title_set
 
 def main():
-    is_remote_save = True  # 是否保存到远程WebDAV服务器
+    is_remote_save = True # 是否保存到远程WebDAV服务器
     ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
