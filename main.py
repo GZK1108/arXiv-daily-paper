@@ -27,8 +27,7 @@ def fetch_arxiv_papers(rss_url):
 
 def translate_and_summarize(title, summary):
     prompt_user = f"""
-    You are a professional academic translator. 
-    Translate the following paper title and abstract **into Chinese**.
+    Translate the following academic paper Title and Abstract into Chinese.
 
     ---
     INPUT
@@ -36,24 +35,22 @@ def translate_and_summarize(title, summary):
     Abstract: {summary}
     ---
 
-    REQUIREMENTS
-    1. Translate faithfully into fluent, academic Chinese.
-    2. You may keep proper nouns, formulas, or short English terms if they have no clear Chinese equivalent, but **never return the full title or abstract entirely in English**.
-    3. Do not explain, comment, or add any text beyond the translation itself.
-    4. Do not summarize or rewrite.
-    5. The output **must strictly follow** the format below — no extra text, lines, or symbols.
+    **CORE REQUIREMENTS**
+    1. **Academic Quality:** Translate faithfully into fluent, professional Chinese suitable for an academic paper.
+    2. **Proper Nouns:** Keep necessary proper nouns, formulas, or short English terms (e.g., specific algorithms or acronyms) if a clear Chinese equivalent is lacking, but **the majority of the text MUST be in Chinese**.
+    3. **Format ONLY:** You MUST strictly adhere to the required output format below. **DO NOT** explain, comment, summarize, or add any text before, between, or after the translation block.
 
     ---
+
+    **REQUIRED OUTPUT FORMAT (STRICTLY ADHERE)**
+
     <翻译后的标题>
 
     <翻译后的摘要>
+
     ---
 
-    SELF-CHECK (must be performed before final output)
-    - If the translated title or abstract remains mostly English (more than half of the text is English), redo the translation into Chinese.
-    - Ensure both fields are non-empty and use natural Chinese sentence structure.
-
-    Return only the formatted translation block above.
+    Return ONLY the content within the REQUIRED OUTPUT FORMAT section, starting with "<翻译后的标题>" and ending with the last line of the abstract translation.
     """
 
     response = client.chat.completions.create(
@@ -62,9 +59,10 @@ def translate_and_summarize(title, summary):
             {
                 "role": "system",
                 "content": (
-                    "You are a strict academic translation assistant. "
-                    "Your only job is to translate English academic texts into Chinese accurately and output in the exact user-specified format. "
-                    "Never return any explanation, English paragraphs, or missing sections."
+                    "You are a highly constrained, professional academic translator. "
+                    "Your SOLE task is to translate the provided English paper title and abstract into fluent, high-quality, academic Chinese. "
+                    "You MUST strictly follow the REQUIRED OUTPUT FORMAT provided by the user, and you MUST NOT include any explanation, comments, extra text, self-checks, or English paragraphs outside of the format. "
+                    "Your output begins with <翻译后的标题> and ends after <翻译后的摘要>."
                 )
             },
             {"role": "user", "content": prompt_user}
@@ -78,6 +76,7 @@ def translate_and_summarize(title, summary):
     if response.choices and response.choices[0].message:
         content = response.choices[0].message.content.strip()
         return content
+
     return "原始标题\n" + title + "\n\n" + "原始摘要\n" + summary  # 返回原始内容
 
 # 新增webdav连接，保存到远程服务器
@@ -154,21 +153,21 @@ def main():
         for paper in papers:
             paper_id = paper.id.split('/')[-1]
             title = paper.title
-            summary = paper.summary
+            summary = paper.summary.split('\n')[-1]
             url = paper.link
-            print(f"Processing paper: {paper_id}")
             if content.item_exists(title):
                 print(f"Paper {paper_id} already processed, skipping.")
                 continue
+            print(f"Processing paper {title}")
             translated_content = translate_and_summarize(title, summary)
             # 假设返回内容格式为：翻译后的标题\n\n翻译后的摘要\n\n中文摘要
             parts = translated_content.split('\n\n')
             if len(parts) >= 2:
                 try:
-                    translated_title = parts[0].split('\n')[1].strip()
+                    translated_title = parts[1].strip()
                 except:
-                    translated_title = parts[0].strip()
-                translated_summary = parts[1].strip()
+                    translated_title = title
+                translated_summary = parts[-1].strip()
                 content.add_content(title, translated_title, translated_summary, url)
             else:
                 print(f"Unexpected response format for paper {paper_id}")
