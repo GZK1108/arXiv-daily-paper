@@ -1,13 +1,19 @@
 import feedparser
 import json
 import os
+import re
 from datetime import datetime
 import time
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from webdav3.client import Client
-
+from config import (
+    ARXIV_RSS_URL,
+    OUTPUT_DIR,
+    IS_REMOTE_SAVE,
+    IS_TRANSLATE,
+)
 
 load_dotenv("api_key.env")  # 指定加载 api_key.env 文件
 client = OpenAI(
@@ -17,7 +23,7 @@ client = OpenAI(
     # base_url="https://api.chatanywhere.org/v1"
 )
 
-OUTPUT_DIR = "arxiv_summaries"
+
 
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -77,7 +83,21 @@ def translate_and_summarize(title, summary):
         content = response.choices[0].message.content.strip()
         return content
 
-    return "原始标题\n" + title + "\n\n" + "原始摘要\n" + summary  # 返回原始内容
+    return title + "\n\n" + summary  # 返回原始内容
+
+# 返回结果处理
+def process_translation_response(response_text):
+    # 移除<翻译后标题></n翻译后的标题>和<翻译后摘要></n翻译后的摘要>标签，并去除首尾空白，然后返回处理后的字符串
+    cleaned = re.sub(r'<翻译后的标题>|</翻译后的标题>|<翻译后的摘要>|</翻译后的摘要>|摘要：', '', response_text).strip()
+    # 剔除多余空行
+    cleaned = re.sub(r'(?:\r\n|\r|\n){3,}', '\n\n', cleaned)
+    parts = cleaned.split('\n\n')
+    if len(parts) >= 2:
+        translated_title = parts[0].strip()
+        translated_summary = parts[-1].strip()
+        return translated_title, translated_summary
+    else:
+        return None, None
 
 # 新增webdav连接，保存到远程服务器
 class WebDAVClient:
@@ -145,8 +165,6 @@ class PaperContent:
         return title in self.title_set
 
 def main():
-    is_remote_save = True # 是否保存到远程WebDAV服务器
-    ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
     papers = fetch_arxiv_papers(ARXIV_RSS_URL)
     content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
     try:
@@ -159,18 +177,17 @@ def main():
                 print(f"Paper {paper_id} already processed, skipping.")
                 continue
             print(f"Processing paper {title}")
-            translated_content = translate_and_summarize(title, summary)
-            # 假设返回内容格式为：翻译后的标题\n\n翻译后的摘要\n\n中文摘要
-            parts = translated_content.split('\n\n')
-            if len(parts) >= 2:
-                try:
-                    translated_title = parts[1].strip()
-                except:
-                    translated_title = title
-                translated_summary = parts[-1].strip()
-                content.add_content(title, translated_title, translated_summary, url)
+            if IS_TRANSLATE:
+                translated_content = translate_and_summarize(title, summary)
+                translated_title, translated_summary = process_translation_response(translated_content)
+                if not translated_title and not translated_summary:
+                    print(f"Failed to process translation for paper {paper_id}, skipping.")
+                    continue
             else:
-                print(f"Unexpected response format for paper {paper_id}")
+                translated_title = title
+                translated_summary = summary
+
+            content.add_content(title, translated_title, translated_summary, url)
             time.sleep(2)  # 避免请求过于频繁
 
 
@@ -178,7 +195,7 @@ def main():
         print(f"An error occurred: {e}")
         
     file_path = content.save_to_md()
-    if is_remote_save:
+    if IS_REMOTE_SAVE:
         webdav_client = WebDAVClient()
         local_md_path = file_path
         remote_md_path = f"/论文总结/{file_path.split('/')[-1]}"
