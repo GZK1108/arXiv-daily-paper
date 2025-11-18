@@ -94,7 +94,8 @@ def process_translation_response(response_text):
     parts = cleaned.split('\n\n')
     if len(parts) >= 2:
         translated_title = parts[0].strip()
-        translated_summary = parts[-1].strip()
+        # 将剩余部分作为摘要
+        translated_summary = '\n\n'.join(part.strip() for part in parts[1:])
         return translated_title, translated_summary
     else:
         return None, None
