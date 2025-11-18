@@ -5,7 +5,7 @@ ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
 OUTPUT_DIR = "arxiv_summaries" 
 
 # 是否保存到远程WebDAV服务器
-IS_REMOTE_SAVE = False
+IS_REMOTE_SAVE = True
 
 # 是否使用AI翻译
-IS_TRANSLATE = False  
+IS_TRANSLATE = True
