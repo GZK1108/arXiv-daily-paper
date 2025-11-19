@@ -10,3 +10,6 @@ IS_REMOTE_SAVE = True
 
 # 是否使用AI翻译
 IS_TRANSLATE = True
+
+# 允许的最大请求失败次数
+MAX_FAILURES = 3

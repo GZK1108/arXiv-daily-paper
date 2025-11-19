@@ -13,6 +13,7 @@ from config import (
     OUTPUT_DIR,
     IS_REMOTE_SAVE,
     IS_TRANSLATE,
+    MAX_FAILURES,
 )
 
 load_dotenv("api_key.env")  # 指定加载 api_key.env 文件
@@ -29,6 +30,10 @@ client_bak = OpenAI(
     base_url=os.getenv("OPENAI_BASE_URL_BAK", ""),
 )
 model_bak = os.getenv("MODEL_BAK", "gpt-5-nano")
+
+# 增加一个全局计数器，如果client请求失败超过一定次数，默认调用备用client
+failure_count = 0
+
 
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -63,31 +68,23 @@ def translate_and_summarize(title, summary):
 
     Return ONLY the content within the REQUIRED OUTPUT FORMAT section, starting with "<翻译后的标题>" and ending with the last line of the abstract translation.
     """
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a highly constrained, professional academic translator. "
-                        "Your SOLE task is to translate the provided English paper title and abstract into fluent, high-quality, academic Chinese. "
-                        "You MUST strictly follow the REQUIRED OUTPUT FORMAT provided by the user, and you MUST NOT include any explanation, comments, extra text, self-checks, or English paragraphs outside of the format. "
-                        "Your output begins with <翻译后的标题> and ends after <翻译后的摘要>."
-                    )
-                },
-                {"role": "user", "content": prompt_user}
-            ],
-            # temperature=0.0,
-            # top_p=1.0,
-            # max_tokens=1200,
-        )
-    except Exception as e:
-        print("Error during OpenAI API call:", e)
-        # 尝试使用备用客户端
+    global failure_count
+    clients = []
+    # 优先选择：若主客户端连续失败达到阈值且配置了备用密钥，则先尝试备用客户端
+    if failure_count >= MAX_FAILURES and os.getenv("OPENAI_API_KEY_BAK"):
+        clients = [(client_bak, model_bak), (client, model)]
+    else:
+        clients = [(client, model), (client_bak, model_bak)]
+
+    response = None
+    last_exc = None
+    for c, m in clients:
+        # 跳过未配置的客户端或模型
+        if c is None or not m:
+            continue
         try:
-            response = client_bak.chat.completions.create(
-                model=model_bak,
+            response = c.chat.completions.create(
+                model=m,
                 messages=[
                     {
                         "role": "system",
@@ -104,16 +101,20 @@ def translate_and_summarize(title, summary):
                 # top_p=1.0,
                 # max_tokens=1200,
             )
-        except Exception as e2:
-            print("Error during Backup OpenAI API call:", e2)
-            return title + "\n\n" + summary  # 返回原始内容
+            # 成功则重置失败计数并跳出
+            failure_count = 0
+            break
+        except Exception as e:
+            print(f"Error during OpenAI API call (model={m}):", e)
+            failure_count += 1
+            last_exc = e
+            # 指数退避，最多 4s
+            backoff = min(2 ** failure_count, 4)
+            time.sleep(backoff)
 
-    # 检查响应内容
-    if response.choices and response.choices[0].message:
-        content = response.choices[0].message.content.strip()
-        return content
-
-    return title + "\n\n" + summary  # 返回原始内容
+    if response is None:
+        print("All OpenAI clients failed. Last error:", last_exc)
+        return title + "\n\n" + summary  # 返回原始内容
 
 # 返回结果处理
 def process_translation_response(response_text):

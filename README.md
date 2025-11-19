@@ -71,6 +71,9 @@ IS_REMOTE_SAVE = False
 
 # 是否使用 AI 翻译
 IS_TRANSLATE = False
+
+# 允许的最大请求失败次数，当主client请求失败次数超过该值，则默认使用备用client
+MAX_FAILURES = 3
 ```
 
 常用 arXiv 分类：
