@@ -32,7 +32,7 @@ client_bak = OpenAI(
 model_bak = os.getenv("MODEL_BAK", "gpt-5-nano")
 
 # 增加一个全局计数器，如果client请求失败超过一定次数，默认调用备用client
-failure_count = 0
+failure_count = {"primary": 0, "backup": 0}
 
 
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
@@ -71,14 +71,14 @@ def translate_and_summarize(title, summary):
     global failure_count
     clients = []
     # 优先选择：若主客户端连续失败达到阈值且配置了备用密钥，则先尝试备用客户端
-    if failure_count >= MAX_FAILURES and os.getenv("OPENAI_API_KEY_BAK"):
-        clients = [(client_bak, model_bak), (client, model)]
+    if failure_count["primary"] >= MAX_FAILURES and os.getenv("OPENAI_API_KEY_BAK"):
+        print("Switching to backup OpenAI client due to repeated failures.")
+        clients = [("backup", client_bak, model_bak), ("primary", client, model)]
     else:
-        clients = [(client, model), (client_bak, model_bak)]
+        clients = [("primary", client, model), ("backup", client_bak, model_bak)]
 
     response = None
-    last_exc = None
-    for c, m in clients:
+    for name, c, m in clients:
         # 跳过未配置的客户端或模型
         if c is None or not m:
             continue
@@ -102,19 +102,21 @@ def translate_and_summarize(title, summary):
                 # max_tokens=1200,
             )
             # 成功则重置失败计数并跳出
-            failure_count = 0
+            failure_count[name] = 0
             break
         except Exception as e:
-            print(f"Error during OpenAI API call (model={m}):", e)
-            failure_count += 1
-            last_exc = e
+            print(f"Error during {name} OpenAI API call (model={m}):", e)
+            failure_count[name] += 1
             # 指数退避，最多 4s
-            backoff = min(2 ** failure_count, 4)
+            backoff = min(2 ** failure_count[name], 4)
             time.sleep(backoff)
+    
+    # 检查响应内容
+    if response is not None and response.choices and response.choices[0].message:
+        content = response.choices[0].message.content.strip()
+        return content
 
-    if response is None:
-        print("All OpenAI clients failed. Last error:", last_exc)
-        return title + "\n\n" + summary  # 返回原始内容
+    return title + "\n\n" + summary  # 返回原始内容
 
 # 返回结果处理
 def process_translation_response(response_text):
@@ -212,6 +214,9 @@ def main():
                     continue
                 print(f"Processing {paper_id}: {title}")
                 if IS_TRANSLATE:
+                    if failure_count["primary"] + failure_count["backup"] >= MAX_FAILURES * 2:
+                        print("Both OpenAI clients have failed too many times. Exiting.")
+                        break
                     translated_content = translate_and_summarize(title, summary)
                     translated_title, translated_summary = process_translation_response(translated_content)
                     if not translated_title and not translated_summary:
