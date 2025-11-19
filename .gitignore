@@ -1,3 +1,4 @@
-/arxiv_summaries
+__pycache__/
+arxiv_summaries/
 *.env
 .DS_Store

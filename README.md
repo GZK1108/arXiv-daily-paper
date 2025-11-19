@@ -80,7 +80,7 @@ IS_TRANSLATE = False
 - `cs.CL` - 计算与语言
 - `cs.NE` - 神经与进化计算
 
-完整分类列表请参考：https://arxiv.org/
+完整分类列表请参考：https://arxiv.org/category_taxonomy
 
 也可以直接多类别订阅（不使用循环）：https://info.arxiv.org/help/rss.html
 
