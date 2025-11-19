@@ -23,13 +23,13 @@ client = OpenAI(
     base_url=os.getenv("OPENAI_BASE_URL"),
     # base_url="https://api.chatanywhere.org/v1"
 )
-model = os.getenv("MODEL", "gpt-5-nano")
+model = os.getenv("MODEL", "")
 
 client_bak = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY_BAK", ""),
     base_url=os.getenv("OPENAI_BASE_URL_BAK", ""),
 )
-model_bak = os.getenv("MODEL_BAK", "gpt-5-nano")
+model_bak = os.getenv("MODEL_BAK", "")
 
 # 增加一个全局计数器，如果client请求失败超过一定次数，默认调用备用client
 failure_count = {"primary": 0, "backup": 0}
@@ -72,7 +72,6 @@ def translate_and_summarize(title, summary):
     clients = []
     # 优先选择：若主客户端连续失败达到阈值且配置了备用密钥，则先尝试备用客户端
     if failure_count["primary"] >= MAX_FAILURES and os.getenv("OPENAI_API_KEY_BAK"):
-        print("Switching to backup OpenAI client due to repeated failures.")
         clients = [("backup", client_bak, model_bak), ("primary", client, model)]
     else:
         clients = [("primary", client, model), ("backup", client_bak, model_bak)]
@@ -107,9 +106,7 @@ def translate_and_summarize(title, summary):
         except Exception as e:
             print(f"Error during {name} OpenAI API call (model={m}):", e)
             failure_count[name] += 1
-            # 指数退避，最多 4s
-            backoff = min(2 ** failure_count[name], 4)
-            time.sleep(backoff)
+            time.sleep(2)
     
     # 检查响应内容
     if response is not None and response.choices and response.choices[0].message:
