@@ -216,13 +216,14 @@ def main():
                     translated_title, translated_summary = process_translation_response(translated_content)
                     if not translated_title and not translated_summary:
                         print(f"Failed to process translation for paper {paper_id}, skipping.")
-                        continue
+                        translated_title = title
+                        translated_summary = summary
                 else:
                     translated_title = title
                     translated_summary = summary
 
                 content.add_content(title, translated_title, translated_summary, url)
-                time.sleep(2)  # 避免请求过于频繁
+                time.sleep(3)  # 避免请求过于频繁
 
         except Exception as e:
             print(f"An error occurred: {e}")
