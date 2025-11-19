@@ -1,5 +1,6 @@
 # arXiv RSS 订阅链接
-ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV" 
+ARXIV_RSS_URL = ["http://export.arxiv.org/rss/cs.CV", 
+                 "http://export.arxiv.org/rss/cs.AI"]
 
 # 输出目录
 OUTPUT_DIR = "arxiv_summaries" 

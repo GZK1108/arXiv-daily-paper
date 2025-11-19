@@ -44,6 +44,10 @@ pip install -r requirements.txt
 ```env
 OPENAI_API_KEY=你的OpenAI密钥
 OPENAI_BASE_URL=https://api.openai.com/v1
+MODEL = gpt-5-nano
+OPENAI_API_KEY_BAK = 备用OpenAI秘钥，可以为空
+OPENAI_BASE_URL_BAK = 备用链接，可以为空
+MODEL_BAK = 备用模型，可以为空
 WEBDAV_HOSTNAME=https://example/webdav
 WEBDAV_LOGIN=your_name
 WEBDAV_PASSWORD=your_password
@@ -56,8 +60,8 @@ WEBDAV_PASSWORD=your_password
 编辑 `config.py` 来控制订阅源、输出目录和功能开关：
 
 ```python
-# arXiv RSS 订阅链接
-ARXIV_RSS_URL = "http://export.arxiv.org/rss/cs.CV"
+# arXiv RSS 订阅链接（分类订阅）
+ARXIV_RSS_URL = ["http://export.arxiv.org/rss/cs.CV", "http://export.arxiv.org/rss/cs.AI"]
 
 # 输出目录
 OUTPUT_DIR = "arxiv_summaries"
@@ -77,6 +81,8 @@ IS_TRANSLATE = False
 - `cs.NE` - 神经与进化计算
 
 完整分类列表请参考：https://arxiv.org/
+
+也可以直接多类别订阅（不使用循环）：https://info.arxiv.org/help/rss.html
 
 ## 使用方法
 

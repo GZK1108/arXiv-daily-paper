@@ -22,8 +22,13 @@ client = OpenAI(
     base_url=os.getenv("OPENAI_BASE_URL"),
     # base_url="https://api.chatanywhere.org/v1"
 )
+model = os.getenv("MODEL", "gpt-5-nano")
 
-
+client_bak = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY_BAK", ""),
+    base_url=os.getenv("OPENAI_BASE_URL_BAK", ""),
+)
+model_bak = os.getenv("MODEL_BAK", "gpt-5-nano")
 
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -58,25 +63,50 @@ def translate_and_summarize(title, summary):
 
     Return ONLY the content within the REQUIRED OUTPUT FORMAT section, starting with "<翻译后的标题>" and ending with the last line of the abstract translation.
     """
-
-    response = client.chat.completions.create(
-        model="gpt-5-nano",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a highly constrained, professional academic translator. "
-                    "Your SOLE task is to translate the provided English paper title and abstract into fluent, high-quality, academic Chinese. "
-                    "You MUST strictly follow the REQUIRED OUTPUT FORMAT provided by the user, and you MUST NOT include any explanation, comments, extra text, self-checks, or English paragraphs outside of the format. "
-                    "Your output begins with <翻译后的标题> and ends after <翻译后的摘要>."
-                )
-            },
-            {"role": "user", "content": prompt_user}
-        ],
-        # temperature=0.0,
-        # top_p=1.0,
-        # max_tokens=1200,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a highly constrained, professional academic translator. "
+                        "Your SOLE task is to translate the provided English paper title and abstract into fluent, high-quality, academic Chinese. "
+                        "You MUST strictly follow the REQUIRED OUTPUT FORMAT provided by the user, and you MUST NOT include any explanation, comments, extra text, self-checks, or English paragraphs outside of the format. "
+                        "Your output begins with <翻译后的标题> and ends after <翻译后的摘要>."
+                    )
+                },
+                {"role": "user", "content": prompt_user}
+            ],
+            # temperature=0.0,
+            # top_p=1.0,
+            # max_tokens=1200,
+        )
+    except Exception as e:
+        print("Error during OpenAI API call:", e)
+        # 尝试使用备用客户端
+        try:
+            response = client_bak.chat.completions.create(
+                model=model_bak,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a highly constrained, professional academic translator. "
+                            "Your SOLE task is to translate the provided English paper title and abstract into fluent, high-quality, academic Chinese. "
+                            "You MUST strictly follow the REQUIRED OUTPUT FORMAT provided by the user, and you MUST NOT include any explanation, comments, extra text, self-checks, or English paragraphs outside of the format. "
+                            "Your output begins with <翻译后的标题> and ends after <翻译后的摘要>."
+                        )
+                    },
+                    {"role": "user", "content": prompt_user}
+                ],
+                # temperature=0.0,
+                # top_p=1.0,
+                # max_tokens=1200,
+            )
+        except Exception as e2:
+            print("Error during Backup OpenAI API call:", e2)
+            return title + "\n\n" + summary  # 返回原始内容
 
     # 检查响应内容
     if response.choices and response.choices[0].message:
@@ -166,42 +196,43 @@ class PaperContent:
         return title in self.title_set
 
 def main():
-    papers = fetch_arxiv_papers(ARXIV_RSS_URL)
-    content = PaperContent(category=ARXIV_RSS_URL.split('/')[-1])
-    try:
-        for paper in papers:
-            paper_id = paper.id.split('/')[-1]
-            title = paper.title
-            summary = paper.summary.split('\n')[-1]
-            url = paper.link
-            if content.item_exists(title):
-                print(f"Paper {paper_id} already processed, skipping.")
-                continue
-            print(f"Processing paper {title}")
-            if IS_TRANSLATE:
-                translated_content = translate_and_summarize(title, summary)
-                translated_title, translated_summary = process_translation_response(translated_content)
-                if not translated_title and not translated_summary:
-                    print(f"Failed to process translation for paper {paper_id}, skipping.")
+    for arxiv_rss_url in ARXIV_RSS_URL:
+        print(f"Fetching papers from {arxiv_rss_url}...")
+        papers = fetch_arxiv_papers(arxiv_rss_url)
+        content = PaperContent(category=arxiv_rss_url.split('/')[-1])
+        try:
+            for paper in papers:
+                paper_id = paper.id.split('/')[-1]
+                title = paper.title
+                summary = paper.summary.split('\n')[-1]
+                url = paper.link
+                if content.item_exists(title):
+                    print(f"Paper {paper_id} already processed, skipping.")
                     continue
-            else:
-                translated_title = title
-                translated_summary = summary
+                print(f"Processing {paper_id}: {title}")
+                if IS_TRANSLATE:
+                    translated_content = translate_and_summarize(title, summary)
+                    translated_title, translated_summary = process_translation_response(translated_content)
+                    if not translated_title and not translated_summary:
+                        print(f"Failed to process translation for paper {paper_id}, skipping.")
+                        continue
+                else:
+                    translated_title = title
+                    translated_summary = summary
 
-            content.add_content(title, translated_title, translated_summary, url)
-            time.sleep(2)  # 避免请求过于频繁
+                content.add_content(title, translated_title, translated_summary, url)
+                time.sleep(2)  # 避免请求过于频繁
 
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
         
-    file_path = content.save_to_md()
-    if IS_REMOTE_SAVE:
-        webdav_client = WebDAVClient()
-        local_md_path = file_path
-        remote_md_path = f"/论文总结/{file_path.split('/')[-1]}"
-        webdav_client.upload_file(local_md_path, remote_md_path)
-        print(f"Uploaded {local_md_path} to WebDAV server at {remote_md_path}")
+        file_path = content.save_to_md()
+        if IS_REMOTE_SAVE:
+            webdav_client = WebDAVClient()
+            local_md_path = file_path
+            remote_md_path = f"/论文总结/{file_path.split('/')[-1]}"
+            webdav_client.upload_file(local_md_path, remote_md_path)
+            print(f"Uploaded {local_md_path} to WebDAV server at {remote_md_path}")
 
 if __name__ == "__main__":
     main()
