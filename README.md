@@ -14,11 +14,12 @@
 
 ```
 arXiv-daily-paper/
-├── config.py           # 行为配置（RSS、输出目录、是否翻译/远程保存）
+├── config.py            # 行为配置（RSS、输出目录、数据库路径、是否翻译/远程保存）
 ├── main.py              # 主程序
 ├── api_key.env          # 环境变量配置文件（需自行创建）
+├── requirements.txt     # 依赖列表
 ├── arxiv_summaries/     # 输出目录
-│   ├── cs.CV_YYYY-MM-DD.json  # JSON 格式数据
+│   ├── papers.db        # SQLite 数据库（统一存储所有论文）
 │   └── cs.CV_YYYY-MM-DD.md    # Markdown 格式报告
 └── README.md            # 项目说明
 ```
@@ -60,11 +61,15 @@ WEBDAV_PASSWORD=your_password
 编辑 `config.py` 来控制订阅源、输出目录和功能开关：
 
 ```python
-# arXiv RSS 订阅链接（分类订阅）
-ARXIV_RSS_URL = ["http://export.arxiv.org/rss/cs.CV", "http://export.arxiv.org/rss/cs.AI"]
+# arXiv RSS 订阅链接（可以是多个分类）
+ARXIV_RSS_URL = ["http://export.arxiv.org/rss/cs.CV", 
+                 "http://export.arxiv.org/rss/cs.AI"]
 
 # 输出目录
 OUTPUT_DIR = "arxiv_summaries"
+
+# SQLite 数据库文件路径（统一存储所有论文）
+DB_FILE = "arxiv_summaries/papers.db"
 
 # 是否保存到远程 WebDAV 服务器
 IS_REMOTE_SAVE = False
@@ -97,24 +102,32 @@ python main.py
 
 程序将：
 1. 从 arXiv RSS 获取最新论文列表
-2. 逐篇翻译论文标题和摘要
-3. 实时保存到 JSON 文件（防止中断丢失数据）
-4. 最后生成完整的 Markdown 报告
-5. 如果在 `config.py` 中设置 `IS_REMOTE_SAVE = True`，程序会连接到 WebDAV 服务器，并将第 4 步生成的 Markdown 文件上传到远程目录 `/论文总结/`（可在 `main.py` 中调整上传路径）。
+2. 检查论文是否已存在于数据库（基于 title 主键），如果存在则跳过
+3. 逐篇翻译论文标题和摘要（如果启用翻译）
+4. 实时保存到 SQLite 数据库（防止中断丢失数据）
+5. 生成当日的 Markdown 报告
+6. 如果在 `config.py` 中设置 `IS_REMOTE_SAVE = True`，程序会连接到 WebDAV 服务器，并将生成的 Markdown 文件上传到远程目录 `/论文总结/`（可在 `main.py` 中调整上传路径）。
 
 ## 输出格式
 
-### JSON 格式
-```json
-[
-  {
-    "title": "原始英文标题",
-    "translated_title": "翻译后的中文标题",
-    "translated_summary": "翻译后的中文摘要",
-    "url": "论文链接"
-  }
-]
+### SQLite 数据库结构
+所有论文统一存储在 `papers.db` 数据库中，表结构如下：
+
+```sql
+CREATE TABLE papers (
+    title TEXT PRIMARY KEY,           -- 论文标题（英文原文）
+    translated_title TEXT,            -- 翻译后的中文标题
+    translated_summary TEXT,          -- 翻译后的中文摘要
+    url TEXT,                         -- 论文链接
+    date TEXT NOT NULL,               -- 采集日期 (YYYY-MM-DD)
+    category TEXT NOT NULL            -- arXiv 分类 (如 cs.CV, cs.AI)
+)
 ```
+
+**去重机制**：
+- 使用 `title` 作为主键，确保同一篇论文不会重复存储
+- 每次运行时会检查论文是否已存在于数据库（不限日期和分类）
+- 如果论文已存在，自动跳过处理
 
 ### Markdown 格式
 ```markdown
@@ -133,11 +146,11 @@ python main.py
 
 ## 注意事项
 
-1. **API 限制**: 程序在每次请求后会等待 2 秒，避免触发 API 频率限制
-2. **去重机制**: 同一天内重复运行程序，已处理的论文会自动跳过
-3. **数据持久化**: 每处理一篇论文都会立即保存到 JSON 文件，避免中断导致数据丢失
+1. **API 限制**: 程序在每次请求后会等待 3 秒，避免触发 API 频率限制
+2. **去重机制**: 使用 SQLite 数据库的主键约束，基于论文标题（title）自动去重，无论日期和分类，同一篇论文只会处理一次
+3. **数据持久化**: 每处理一篇论文都会立即保存到 SQLite 数据库，避免中断导致数据丢失
 4. **成本控制**: 翻译会消耗 API 调用额度，请注意控制使用频率
-5. **环境变量**: 确保 `api_key.env` 文件不要提交到版本控制系统
+5. **环境变量**: 确保 `api_key.env` 文件不要提交到版本控制系统（建议添加到 `.gitignore`）
 6. **WebDAV**: 若启用远程保存，请确保 `WEBDAV_HOSTNAME/WEBDAV_LOGIN/WEBDAV_PASSWORD` 已正确配置且服务器可达；默认上传到 `/论文总结/` 目录，可在 `main.py` 中修改。
 
 7. **开关说明**: `IS_TRANSLATE=False` 时将直接使用英文标题和摘要；`IS_REMOTE_SAVE=False` 时只在本地输出，不会尝试连接 WebDAV。

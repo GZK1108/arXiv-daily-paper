@@ -2,6 +2,7 @@ import feedparser
 import json
 import os
 import re
+import sqlite3
 from datetime import datetime
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from config import (
     IS_REMOTE_SAVE,
     IS_TRANSLATE,
     MAX_FAILURES,
+    DB_FILE,
 )
 
 load_dotenv("api_key.env")  # 指定加载 api_key.env 文件
@@ -157,34 +159,66 @@ class PaperContent:
     def __init__(self, category="cs"):
         self.category = category
         self.date_str = datetime.now().strftime("%Y-%m-%d")
-        # 新建一个数据库文件，实时保存内容
-        self.db_file = f"{OUTPUT_DIR}/{self.category}_{self.date_str}.json"
-        if not os.path.exists(self.db_file):
-            with open(self.db_file, 'w', encoding='utf-8') as f:
-                json.dump([], f, ensure_ascii=False, indent=4)
-            self.json_data = []
-        else:
-            with open(self.db_file, 'r', encoding='utf-8') as f:
-                self.json_data = json.load(f)
-        # 新建一个hash set，方便查重
-        self.title_set = set(item['title'] for item in self.json_data)
+        self.db_path = DB_FILE
+        
+        # 初始化数据库连接
+        self.conn = sqlite3.connect(self.db_path)
+        self.cursor = self.conn.cursor()
+        
+        # 创建表（如果不存在）
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS papers (
+                title TEXT PRIMARY KEY,
+                translated_title TEXT,
+                translated_summary TEXT,
+                url TEXT,
+                date TEXT NOT NULL,
+                category TEXT NOT NULL
+            )
+        ''')
+        self.conn.commit()
+        
+        # 加载当前日期和分类的论文到内存（用于生成当日 MD）
+        self.papers_today = []
+        self.cursor.execute('''
+            SELECT title, translated_title, translated_summary, url
+            FROM papers
+            WHERE date = ? AND category = ?
+        ''', (self.date_str, self.category))
+        
+        for row in self.cursor.fetchall():
+            self.papers_today.append({
+                "title": row[0],
+                "translated_title": row[1],
+                "translated_summary": row[2],
+                "url": row[3]
+            })
 
-    def add_content(self, title, translated_title, translated_summary, url):    
-        self.json_data.append({
-            "title": title,
-            "translated_title": translated_title,
-            "translated_summary": translated_summary,
-            "url": url
-        })
-        # 实时保存到数据库文件
-        with open(self.db_file, 'w', encoding='utf-8') as f:
-            json.dump(self.json_data, f, ensure_ascii=False, indent=4)
-        self.title_set.add(title)
+    def add_content(self, title, translated_title, translated_summary, url):
+        """添加论文到数据库，使用 INSERT OR REPLACE 确保去重"""
+        try:
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO papers (title, translated_title, translated_summary, url, date, category)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (title, translated_title, translated_summary, url, self.date_str, self.category))
+            self.conn.commit()
+            
+            # 同时添加到当日列表
+            self.papers_today.append({
+                "title": title,
+                "translated_title": translated_title,
+                "translated_summary": translated_summary,
+                "url": url
+            })
+        except sqlite3.IntegrityError as e:
+            print(f"Paper already exists in database: {title}")
     
     def save_to_md(self):
+        """根据当日数据生成 Markdown 文件"""
         filename = f"{OUTPUT_DIR}/{self.category}_{self.date_str}.md"
         with open(filename, 'w', encoding='utf-8') as f:
-            for paper in self.json_data:
+            f.write(f"共有 {len(self.papers_today)} 篇论文。\n\n")
+            for paper in self.papers_today:
                 f.write(f"# {paper['title']}\n\n")
                 f.write(f"**标题:** {paper['translated_title']}\n\n")
                 f.write(f"**摘要:**\n\n{paper['translated_summary']}\n\n")
@@ -193,7 +227,13 @@ class PaperContent:
         return filename
     
     def item_exists(self, title):
-        return title in self.title_set
+        """检查论文是否已存在于数据库（不限日期和分类）"""
+        self.cursor.execute('SELECT 1 FROM papers WHERE title = ?', (title,))
+        return self.cursor.fetchone() is not None
+    
+    def close(self):
+        """关闭数据库连接"""
+        self.conn.close()
 
 def main():
     for arxiv_rss_url in ARXIV_RSS_URL:
@@ -227,8 +267,12 @@ def main():
                 content.add_content(title, translated_title, translated_summary, url)
                 time.sleep(3)  # 避免请求过于频繁
 
+
         except Exception as e:
             print(f"An error occurred: {e}")
+        finally:
+            # 确保数据库连接关闭
+            content.close()
         
         file_path = content.save_to_md()
         if IS_REMOTE_SAVE:

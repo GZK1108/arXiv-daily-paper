@@ -2,3 +2,5 @@ __pycache__/
 arxiv_summaries/
 *.env
 .DS_Store
+*.db
+test.py
