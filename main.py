@@ -244,7 +244,7 @@ def main():
             for paper in papers:
                 paper_id = paper.id.split('/')[-1]
                 title = paper.title
-                summary = paper.summary.split('\n')[-1]
+                summary = paper.summary.split('\n')[1:]
                 url = paper.link
                 if content.item_exists(title):
                     print(f"Paper {paper_id} already processed, skipping.")
