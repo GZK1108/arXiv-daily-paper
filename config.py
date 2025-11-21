@@ -15,3 +15,6 @@ IS_TRANSLATE = True
 
 # 允许的最大请求失败次数
 MAX_FAILURES = 3
+
+# 最大并发请求数（异步翻译时的并发限制）
+MAX_CONCURRENT_REQUESTS = 5

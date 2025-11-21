@@ -6,9 +6,11 @@
 
 - 📚 自动从 arXiv RSS 订阅获取最新论文
 - 🌏 使用 OpenAI API 将论文标题和摘要翻译为中文
-- 💾 自动保存为 JSON 和 Markdown 格式
+- 💾 使用 SQLite 数据库统一存储，自动生成 Markdown 报告
 - 🔄 支持增量更新，避免重复处理
-- ⚡ 智能去重机制
+- ⚡ 智能去重机制（基于论文标题主键）
+- 🚀 异步并发翻译，提升处理速度
+- 🔧 支持主备 API 自动切换
 
 ## 项目结构
 
@@ -79,6 +81,9 @@ IS_TRANSLATE = False
 
 # 允许的最大请求失败次数，当主client请求失败次数超过该值，则默认使用备用client
 MAX_FAILURES = 3
+
+# 最大并发请求数（异步翻译时的并发限制）
+MAX_CONCURRENT_REQUESTS = 5
 ```
 
 常用 arXiv 分类：
@@ -103,7 +108,10 @@ python main.py
 程序将：
 1. 从 arXiv RSS 获取最新论文列表
 2. 检查论文是否已存在于数据库（基于 title 主键），如果存在则跳过
-3. 逐篇翻译论文标题和摘要（如果启用翻译）
+3. **异步并发翻译**论文标题和摘要（如果启用翻译）
+   - 使用 `asyncio` 实现异步请求
+   - 通过 `Semaphore` 限制最大并发数（默认 5 个）
+   - 自动重试和主备 API 切换
 4. 实时保存到 SQLite 数据库（防止中断丢失数据）
 5. 生成当日的 Markdown 报告
 6. 如果在 `config.py` 中设置 `IS_REMOTE_SAVE = True`，程序会连接到 WebDAV 服务器，并将生成的 Markdown 文件上传到远程目录 `/论文总结/`（可在 `main.py` 中调整上传路径）。
@@ -146,11 +154,12 @@ CREATE TABLE papers (
 
 ## 注意事项
 
-1. **API 限制**: 程序在每次请求后会等待 3 秒，避免触发 API 频率限制
+1. **异步并发**: 程序使用异步方式并发处理翻译请求，通过 `MAX_CONCURRENT_REQUESTS` 控制最大并发数（默认 5），可根据 API 限制调整
 2. **去重机制**: 使用 SQLite 数据库的主键约束，基于论文标题（title）自动去重，无论日期和分类，同一篇论文只会处理一次
 3. **数据持久化**: 每处理一篇论文都会立即保存到 SQLite 数据库，避免中断导致数据丢失
-4. **成本控制**: 翻译会消耗 API 调用额度，请注意控制使用频率
+4. **成本控制**: 翻译会消耗 API 调用额度，异步并发会加快处理速度，但也会增加短时间内的请求量
 5. **环境变量**: 确保 `api_key.env` 文件不要提交到版本控制系统（建议添加到 `.gitignore`）
+6. **性能优化**: 异步并发可显著提升处理速度，例如处理 50 篇论文，串行需要约 200 秒，5 并发仅需约 40-50 秒
 6. **WebDAV**: 若启用远程保存，请确保 `WEBDAV_HOSTNAME/WEBDAV_LOGIN/WEBDAV_PASSWORD` 已正确配置且服务器可达；默认上传到 `/论文总结/` 目录，可在 `main.py` 中修改。
 
 7. **开关说明**: `IS_TRANSLATE=False` 时将直接使用英文标题和摘要；`IS_REMOTE_SAVE=False` 时只在本地输出，不会尝试连接 WebDAV。
@@ -205,7 +214,16 @@ openai.OpenAIError: The api_key client option must be set either by passing api_
 A: 通常是返回没有包含预期的标签或换行。请确认模型返回以 `<翻译后的标题>` 开始，并且有一个空行分隔，再跟 `<翻译后的摘要>`。如需兼容更多格式，可调整 `process_translation_response()` 的正则与切分规则。
 
 ### Q: 如何修改翻译的模型？
-A: 在 `main.py` 的 `translate_and_summarize` 函数中修改 `model` 参数即可，例如改为 `gpt-4o-mini`（请保证你的 BASE_URL 与 API Key 支持该模型）。
+A: 在 `api_key.env` 中修改 `MODEL` 参数即可，例如改为 `gpt-4o-mini`（请保证你的 BASE_URL 与 API Key 支持该模型）。
+
+### Q: 如何调整并发数？
+A: 在 `config.py` 中修改 `MAX_CONCURRENT_REQUESTS` 的值。建议根据你的 API 限制调整：
+- 免费账户建议设置为 3-5
+- 付费账户可设置为 10-20
+- 过高可能触发 API 频率限制
+
+### Q: 异步处理会影响稳定性吗？
+A: 不会。程序有完善的异常处理机制，即使某个翻译任务失败，也会自动使用原文，不影响其他论文的处理。
 
 ### Q: 如何同时订阅多个分类？
 A: 修改 `main()` 函数，添加多个 RSS URL 的循环处理。
